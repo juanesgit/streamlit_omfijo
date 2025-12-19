@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  streamlit:
+    build: .
+    container_name: streamlit_seguimientocontainer
+    ports:
+      - "8501:8501"
+    environment:
+      DB_USER: "ccot"
+      DB_PASSWORD: "ccot"
+      DB_HOST: "10.108.34.32"
+      DB_PORT: "33063"
+      DB_NAME: "ccot"
+    command:
+      [
+        "streamlit",
+        "run",
+        "seguimiento.py",
+        "--server.port=8501",
+        "--server.address=0.0.0.0",
+      ]
