@@ -25,20 +25,26 @@ def get_engine():
     host_env = os.getenv("DB_HOST", host)
     port_env = os.getenv("DB_PORT", puerto_mysql)
     db_name = os.getenv("DB_NAME", base_datos)
-    try:
-        secrets = st.secrets
-        if "DB_USER" in secrets:
-            user = secrets["DB_USER"]
-        if "DB_PASSWORD" in secrets:
-            password = secrets["DB_PASSWORD"]
-        if "DB_HOST" in secrets:
-            host_env = secrets["DB_HOST"]
-        if "DB_PORT" in secrets:
-            port_env = secrets["DB_PORT"]
-        if "DB_NAME" in secrets:
-            db_name = secrets["DB_NAME"]
-    except Exception:
-        pass
+    possible_paths = [
+        os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+        "/app/.streamlit/secrets.toml",
+        os.path.expanduser("~/.streamlit/secrets.toml"),
+    ]
+    if any(os.path.exists(p) for p in possible_paths):
+        try:
+            secrets = st.secrets
+            if "DB_USER" in secrets:
+                user = secrets["DB_USER"]
+            if "DB_PASSWORD" in secrets:
+                password = secrets["DB_PASSWORD"]
+            if "DB_HOST" in secrets:
+                host_env = secrets["DB_HOST"]
+            if "DB_PORT" in secrets:
+                port_env = secrets["DB_PORT"]
+            if "DB_NAME" in secrets:
+                db_name = secrets["DB_NAME"]
+        except Exception:
+            pass
     return create_engine(
         f"mysql+pymysql://{user}:{password}@{host_env}:{port_env}/{db_name}"
     )
