@@ -6,6 +6,14 @@ import streamlit as st
 
 def _load_users_from_secrets():
     try:
+        possible_paths = [
+            os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+            "/app/.streamlit/secrets.toml",
+            os.path.expanduser("~/.streamlit/secrets.toml"),
+        ]
+        if not any(os.path.exists(p) for p in possible_paths):
+            return {}
+
         secrets = st.secrets
         # Permitir dos formatos: auth.users como dict, o AUTH_USERS como string JSON
         if "auth" in secrets and "users" in secrets["auth"]:
