@@ -6,10 +6,14 @@ import data_utils as du
 import os
 import time
 from datetime import datetime, timedelta
+import auth
 
 st.set_page_config(
     layout="wide", initial_sidebar_state="collapsed"
 )  # Habilitar pantalla ancha
+
+# Requerir autenticación antes de continuar
+auth.require_login("Seguimiento O&M R3")
 
 usuario = "ccot"
 contraseña = "ccot"
