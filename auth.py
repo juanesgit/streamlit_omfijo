@@ -129,43 +129,53 @@ def require_login(title: str = "Acceso") -> str:
     if cm is not None and not st.session_state.get("_auth_cookie_ready", False):
         cm.get("auth")  # Render del componente
         st.session_state["_auth_cookie_ready"] = True
-        _overlay("Validando sesión…")
         st.rerun()
 
     if cm is not None and not force_logout:
         token = cm.get("auth")
-        if isinstance(token, str) and ":" in token:
-            cu, cs = token.split(":", 1)
-            if cu in users and _sign(cu) == cs:
-                st.session_state["auth_user"] = cu
-        elif not st.session_state.get("_auth_cookie_checked", False):
-            st.session_state["_auth_cookie_checked"] = True
-            st.rerun()
-        elif "auth_user" not in st.session_state:
-            t0 = st.session_state.get("_auth_grace_t0")
-            if not t0:
-                st.session_state["_auth_grace_t0"] = time.monotonic()
+        if isinstance(token, str):
+            if token.startswith("logout:"):
+                # Cookie marcada como logout: tratar como no autenticado y evitar reruns extra
+                st.session_state["_auth_cookie_checked"] = True
+            elif ":" in token:
+                cu, cs = token.split(":", 1)
+                if cu in users and _sign(cu) == cs:
+                    already = "auth_user" in st.session_state and st.session_state["auth_user"] == cu
+                    st.session_state["auth_user"] = cu
+                    if not already and not st.session_state.get("_auth_authed_rerun", False):
+                        st.session_state["_auth_authed_rerun"] = True
+                        _overlay("Validando sesión…")
+                        st.rerun()
+            elif not st.session_state.get("_auth_cookie_checked", False):
+                st.session_state["_auth_cookie_checked"] = True
                 st.rerun()
-            elif time.monotonic() - t0 < 1.8:
-                _overlay("Validando sesión…")
-                st.stop()
 
     # Sesión activa
     if "auth_user" in st.session_state and st.session_state["auth_user"] in users:
+        st.session_state.pop("_auth_authed_rerun", None)
+        # Mostrar overlay una sola vez incluso si ya había auth_user por sesión persistente
+        if not st.session_state.get("_auth_overlay_once", False):
+            st.session_state["_auth_overlay_once"] = True
+            _overlay("Validando sesión…")
+            st.rerun()
         with st.sidebar:
             st.caption(f"Conectado como: {st.session_state['auth_user']}")
             if st.button("Cerrar sesión"):
                 del st.session_state["auth_user"]
                 if cm is not None:
-                    # Expirar cookie para asegurar borrado en todos los navegadores
-                    current_token = cm.get("auth")
-                    if current_token:
-                        cm.set("auth", "", max_age=0)
+                    # Marcar explícitamente logout y borrar cookie para evitar rehidratación tras refresh
+                    try:
+                        cm.delete("auth")
+                    except Exception:
+                        pass
+                    cm.set("auth", f"logout:{int(time.time())}", max_age=60 * 5)
                 st.session_state.pop("_auth_cookie_ready", None)
                 st.session_state.pop("_auth_cookie_checked", None)
                 st.session_state.pop("_auth_grace_t0", None)
+                st.session_state.pop("_auth_overlay_once", None)
                 st.session_state["_auth_force_logout"] = True
-                st.rerun()
+                _overlay("Cerrando sesión…")
+                st.stop()
         return st.session_state["auth_user"]
 
     # Hemos decidido no hidratar desde cookie (logout forzado) o no hay cookie válida.
