@@ -110,6 +110,13 @@ def require_login(title: str = "Acceso") -> str:
         st.stop()
 
     cm = _cookie_manager()
+    # Primer paso: da oportunidad a que el componente de cookies se monte
+    # y luego vuelve a ejecutar para leer el valor real, evitando parpadeo de login.
+    if cm is not None and not st.session_state.get("_auth_cookie_ready", False):
+        cm.get("auth")  # Render del componente
+        st.session_state["_auth_cookie_ready"] = True
+        st.rerun()
+
     if cm is not None:
         token = cm.get("auth")
         if isinstance(token, str) and ":" in token:
