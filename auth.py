@@ -2,6 +2,7 @@ import os
 import json
 import hashlib
 import hmac
+import time
 import streamlit as st
 try:
     import extra_streamlit_components as stx
@@ -100,6 +101,17 @@ def _sign(u: str) -> str:
     return hmac.new(_cookie_secret().encode("utf-8"), u.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _overlay(msg: str = "Validando sesión…"):
+    st.markdown(
+        f"""
+        <div style="position:fixed;inset:0;background:rgba(17,24,39,.55);backdrop-filter:saturate(180%) blur(2px);display:flex;align-items:center;justify-content:center;z-index:10000;">
+          <div style="padding:16px 20px;border-radius:10px;background:#111827;color:#e5e7eb;font-size:18px;font-weight:600;border:1px solid rgba(255,255,255,.1)">{msg}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def require_login(title: str = "Acceso") -> str:
     users = _credentials()
 
@@ -110,19 +122,33 @@ def require_login(title: str = "Acceso") -> str:
         st.stop()
 
     cm = _cookie_manager()
+    # Si venimos de un logout forzado, no hidrates desde cookie en este ciclo
+    force_logout = st.session_state.get("_auth_force_logout", False)
     # Primer paso: da oportunidad a que el componente de cookies se monte
     # y luego vuelve a ejecutar para leer el valor real, evitando parpadeo de login.
     if cm is not None and not st.session_state.get("_auth_cookie_ready", False):
         cm.get("auth")  # Render del componente
         st.session_state["_auth_cookie_ready"] = True
+        _overlay("Validando sesión…")
         st.rerun()
 
-    if cm is not None:
+    if cm is not None and not force_logout:
         token = cm.get("auth")
         if isinstance(token, str) and ":" in token:
             cu, cs = token.split(":", 1)
             if cu in users and _sign(cu) == cs:
                 st.session_state["auth_user"] = cu
+        elif not st.session_state.get("_auth_cookie_checked", False):
+            st.session_state["_auth_cookie_checked"] = True
+            st.rerun()
+        elif "auth_user" not in st.session_state:
+            t0 = st.session_state.get("_auth_grace_t0")
+            if not t0:
+                st.session_state["_auth_grace_t0"] = time.monotonic()
+                st.rerun()
+            elif time.monotonic() - t0 < 1.8:
+                _overlay("Validando sesión…")
+                st.stop()
 
     # Sesión activa
     if "auth_user" in st.session_state and st.session_state["auth_user"] in users:
@@ -131,9 +157,21 @@ def require_login(title: str = "Acceso") -> str:
             if st.button("Cerrar sesión"):
                 del st.session_state["auth_user"]
                 if cm is not None:
-                    cm.delete("auth")
+                    # Expirar cookie para asegurar borrado en todos los navegadores
+                    current_token = cm.get("auth")
+                    if current_token:
+                        cm.set("auth", "", max_age=0)
+                st.session_state.pop("_auth_cookie_ready", None)
+                st.session_state.pop("_auth_cookie_checked", None)
+                st.session_state.pop("_auth_grace_t0", None)
+                st.session_state["_auth_force_logout"] = True
                 st.rerun()
         return st.session_state["auth_user"]
+
+    # Hemos decidido no hidratar desde cookie (logout forzado) o no hay cookie válida.
+    # Ya no estamos autenticados, quitar la bandera para futuros ciclos.
+    if force_logout:
+        st.session_state.pop("_auth_force_logout", None)
 
     st.title(title)
     st.subheader("Inicio de sesión")
