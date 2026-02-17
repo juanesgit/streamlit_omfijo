@@ -1,7 +1,12 @@
 import os
 import json
 import hashlib
+import hmac
 import streamlit as st
+try:
+    import extra_streamlit_components as stx
+except Exception:
+    stx = None
 
 
 def _load_users_from_secrets():
@@ -63,6 +68,38 @@ def _credentials() -> dict:
     return users or {}
 
 
+def _cookie_secret() -> str:
+    try:
+        possible_paths = [
+            os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+            "/app/.streamlit/secrets.toml",
+            os.path.expanduser("~/.streamlit/secrets.toml"),
+        ]
+        if any(os.path.exists(p) for p in possible_paths):
+            secrets = st.secrets
+            if "AUTH_COOKIE_KEY" in secrets:
+                return str(secrets["AUTH_COOKIE_KEY"])
+            if "auth" in secrets and "cookie_key" in secrets["auth"]:
+                return str(secrets["auth"]["cookie_key"])
+    except Exception:
+        pass
+    env_key = os.getenv("AUTH_COOKIE_KEY", "")
+    if env_key:
+        return env_key
+    salt = os.getenv("AUTH_USERS", "")
+    return hashlib.sha256(("SALT" + salt).encode("utf-8")).hexdigest()
+
+
+def _cookie_manager():
+    if stx is None:
+        return None
+    return stx.CookieManager(key="auth_cookies")
+
+
+def _sign(u: str) -> str:
+    return hmac.new(_cookie_secret().encode("utf-8"), u.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
 def require_login(title: str = "Acceso") -> str:
     users = _credentials()
 
@@ -72,12 +109,22 @@ def require_login(title: str = "Acceso") -> str:
         )
         st.stop()
 
+    cm = _cookie_manager()
+    if cm is not None:
+        token = cm.get("auth")
+        if isinstance(token, str) and ":" in token:
+            cu, cs = token.split(":", 1)
+            if cu in users and _sign(cu) == cs:
+                st.session_state["auth_user"] = cu
+
     # Sesión activa
     if "auth_user" in st.session_state and st.session_state["auth_user"] in users:
         with st.sidebar:
             st.caption(f"Conectado como: {st.session_state['auth_user']}")
             if st.button("Cerrar sesión"):
                 del st.session_state["auth_user"]
+                if cm is not None:
+                    cm.delete("auth")
                 st.rerun()
         return st.session_state["auth_user"]
 
@@ -91,6 +138,11 @@ def require_login(title: str = "Acceso") -> str:
         if submitted:
             if username in users and _match_password(users[username], password):
                 st.session_state["auth_user"] = username
+                if cm is not None:
+                    new_token = f"{username}:{_sign(username)}"
+                    current_token = cm.get("auth")
+                    if current_token != new_token:
+                        cm.set("auth", new_token, max_age=60 * 60 * 24 * 7)
                 st.rerun()
             else:
                 st.error("Credenciales inválidas")
