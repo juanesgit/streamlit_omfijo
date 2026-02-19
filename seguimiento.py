@@ -175,7 +175,7 @@ SELECT
     inc.`Fecha_carga` AS FECHA_ACTUALIZACION_MAXIMO,
     wf.`Fecha_Actualizacion` AS FECHA_ACTUALIZACION_AGENDA,
     COALESCE(mnod.RED, mnods.RED) AS RED,
-    COALESCE(COALESCE(bs1.`SITE Owner`, bs2.`SITE Owner`), '') AS `OWNER`,
+    COALESCE(COALESCE(bs1.ZO, bs2.ZO), '') AS `OWNER`,
     IF(sm.CONVENIENTE="SI","SI",NULL) AS CONV
 FROM ccot.incidentes inc
 LEFT JOIN tiempo_limite_cte t ON inc.`Orden de trabajo` = t.`Orden de trabajo`
@@ -183,8 +183,8 @@ LEFT JOIN ccot.wf_om_back wf ON inc.`Orden de trabajo` = wf.`Orden de trabajo`
 LEFT JOIN ccot.familias fa ON inc.`Ruta de clasificación` = fa.`clasificación`
 LEFT JOIN ccot.nodos_marca_om mnod ON mnod.NODO_TK = inc.`Articulo de configuración`
 LEFT JOIN ccot.nodos_marca_om mnods ON mnods.NODO_TK = inc.`Ubicación` 
-LEFT JOIN `o&m`.SR_Baseline bs1 ON bs1.ID COLLATE utf8mb4_unicode_ci = inc.`Articulo de configuración`
-LEFT JOIN `o&m`.SR_Baseline bs2 ON bs2.ID COLLATE utf8mb4_unicode_ci = inc.`Ubicación`
+LEFT JOIN ccot.ZO bs1 ON bs1.ID_NODO COLLATE utf8mb4_unicode_ci = inc.`Articulo de configuración`
+LEFT JOIN ccot.ZO bs2 ON bs2.ID_NODO COLLATE utf8mb4_unicode_ci = inc.`Ubicación`
 LEFT JOIN ccot.simple_om_corp sm ON sm.OT = inc.`Orden de trabajo`
 WHERE inc.`Estado Incidente` <> "CANCELADO"
 ORDER BY (TIMESTAMPDIFF(DAY, inc.`Fecha de creación`, NOW()) * 1440) +
